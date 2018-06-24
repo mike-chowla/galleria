@@ -1323,7 +1323,39 @@ Galleria = function() {
                 h = 0,
                 hooks = [0];
 
+            if (self._options.carouselVertical) {
+                w = self.$('thumbnails-list').width();
+            }
+
+            height_offset = 0;
+            row_height = 0;
+            width_left = w;
+
             $.each( self._thumbnails, function( i, thumb ) {
+
+              if (self._options.carouselVertical) {
+      					if ( thumb.ready ) {
+      						th_w = thumb.outerWidth;
+      						th_h = thumb.outerHeight;
+      					} else {
+      						th_w = 0;
+      						th_h = 0;
+      					}
+
+      					if (th_w > width_left) {
+      						// On the next row
+      						height_offset = height_offset + row_height;
+      						width_left = w
+      					 	row_height = 0;
+      					}
+
+      					hooks[i] = height_offset;
+      					width_left = width_left - th_w;
+      					row_height = Math.max(th_h, row_height);
+      					h = height_offset + row_height;
+      					hooks[ i+1 ] = h
+
+      				} else {
                 if ( thumb.ready ) {
                     w += thumb.outerWidth || $( thumb.container ).outerWidth( true );
                     // Due to a bug in jquery, outerwidth() returns the floor of the actual outerwidth,
@@ -1334,6 +1366,7 @@ Galleria = function() {
                     hooks[ i+1 ] = w;
                     h = M.max( h, thumb.outerHeight || $( thumb.container).outerHeight( true ) );
                 }
+              }
             });
 
             self.$( 'thumbnails' ).css({
@@ -1341,17 +1374,33 @@ Galleria = function() {
                 height: h
             });
 
-            carousel.max = w;
+
+
+            if ( self._options.carouselVertical == false) {
+              carousel.max = w;
+              carousel.width = self.$( 'thumbnails-list' ).width();
+            } else {
+              carousel.max = h;
+      				carousel.dimension = carousel.height = self.$( 'container' ).height();
+
+      				next_top = carousel.height - carousel.next.height();
+      				carousel.next.css({ top: next_top });
+            }
+
             carousel.hooks = hooks;
-            carousel.width = self.$( 'thumbnails-list' ).width();
             carousel.setClasses();
 
-            self.$( 'thumbnails-container' ).toggleClass( 'galleria-carousel', w > carousel.width );
+            if ( self._options.carouselVertical == false) {
+              self.$( 'thumbnails-container' ).toggleClass( 'galleria-carousel', w > carousel.width );
 
-            // one extra calculation
-            carousel.width = self.$( 'thumbnails-list' ).width();
+              // one extra calculation
+              carousel.dimension = carousel.width = self.$( 'thumbnails-list' ).width();
 
-            // todo: fix so the carousel moves to the left
+              // todo: fix so the carousel moves to the left
+
+      			} else {
+      				self.$( 'thumbnails-container' ).toggleClass( 'galleria-carousel', h > carousel.height );
+      			}
         },
 
         bindControls: function() {
@@ -1364,7 +1413,7 @@ Galleria = function() {
                 if ( self._options.carouselSteps === 'auto' ) {
 
                     for ( i = carousel.current; i < carousel.hooks.length; i++ ) {
-                        if ( carousel.hooks[i] - carousel.hooks[ carousel.current ] > carousel.width ) {
+                        if ( carousel.hooks[i] - carousel.hooks[ carousel.current ] > carousel.dimension ) {
                             carousel.set(i - 2);
                             break;
                         }
@@ -1381,7 +1430,7 @@ Galleria = function() {
                 if ( self._options.carouselSteps === 'auto' ) {
 
                     for ( i = carousel.current; i >= 0; i-- ) {
-                        if ( carousel.hooks[ carousel.current ] - carousel.hooks[i] > carousel.width ) {
+                        if ( carousel.hooks[ carousel.current ] - carousel.hooks[i] > carousel.dimension ) {
                             carousel.set( i + 2 );
                             break;
                         } else if ( i === 0 ) {
@@ -1398,7 +1447,7 @@ Galleria = function() {
         // calculate and set positions
         set: function( i ) {
             i = M.max( i, 0 );
-            while ( carousel.hooks[i - 1] + carousel.width >= carousel.max && i >= 0 ) {
+            while ( carousel.hooks[i - 1] + carousel.dimension >= carousel.max && i >= 0 ) {
                 i--;
             }
             carousel.current = i;
@@ -1422,22 +1471,38 @@ Galleria = function() {
             // calculate last position
             var last = carousel.current;
             while( carousel.hooks[last] - carousel.hooks[ carousel.current ] <
-                   carousel.width && last <= carousel.hooks.length ) {
+                   carousel.dimension && last <= carousel.hooks.length ) {
                 last ++;
+            }
+
+            // Since we can have multiple images per row, we to figure out the
+            //   the number of images we have to move to get the next row
+            next_loc = 1;
+            while (i + next_loc < carousel.hooks.length &&
+              carousel.hooks[i] == carousel.hooks[i + next_loc ]) {
+              next_loc ++;
             }
 
             // set position
             if ( i - 1 < carousel.current ) {
                 carousel.set( i - 1 );
-            } else if ( i + 2 > last) {
-                carousel.set( i - last + carousel.current + 2 );
+            } else if ( i + next_loc + 1 > last) {
+				        after_index = i - last + carousel.current + next_loc;
+				        next_offset = 1;
+
+				        while (after_index + next_offset < carousel.hooks.length &&
+					         carousel.hooks[after_index] == carousel.hooks[after_index+next_offset]) {
+					         next_offset ++;
+				        }
+
+                carousel.set( after_index + next_offset );
             }
         },
 
         // helper for setting disabled classes
         setClasses: function() {
             carousel.prev.toggleClass( 'disabled', !carousel.current );
-            carousel.next.toggleClass( 'disabled', carousel.hooks[ carousel.current ] + carousel.width >= carousel.max );
+            carousel.next.toggleClass( 'disabled', carousel.hooks[ carousel.current ] + carousel.dimension >= carousel.max );
         },
 
         // the animation method
@@ -1454,9 +1519,18 @@ Galleria = function() {
                 return $(this).css('left');
             });
 
-            Utils.animate(self.get( 'thumbnails' ), {
-                left: num
-            },{
+            var anim_param;
+      			if ( self._options.carouselVertical == false) {
+      				anim_param = {
+      	                left: num
+      	            }
+      			} else {
+      				anim_param = {
+      	                top: num
+      	            }
+      			}
+
+            Utils.animate(self.get( 'thumbnails' ), anim_param, {
                 duration: self._options.carouselSpeed,
                 easing: self._options.easing,
                 queue: false
@@ -2587,6 +2661,7 @@ Galleria.prototype = {
             carouselFollow: true, // legacy, deprecate at 1.3
             carouselSpeed: 400,
             carouselSteps: 'auto',
+            carouselVertical: false,
             clicknext: false,
             dailymotion: {
                 foreground: '%23EEEEEE',
@@ -2897,6 +2972,8 @@ Galleria.prototype = {
             this._options.variation,
             'galleria-theme-'+this.theme.name
         ].join(' '));
+
+        this.$( 'thumbnails-container').addClass( self._options.carouselVertical ? 'vertical' : 'horizontal');
 
         // add images to the controls
         if ( !this._options.swipe ) {
@@ -4840,6 +4917,13 @@ this.prependChild( 'info', 'myElement' );
             } catch(e) {}
         }
     },
+
+    flushQueue : function () {
+  		while (this._queue.length > 0) {
+  			protoArray.shift.call(this._queue);
+  		}
+  		this._queue.stalled = false;
+  	},
 
     /**
         Shows an image by index
