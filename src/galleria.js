@@ -1325,6 +1325,12 @@ Galleria = function() {
 
             if (self._options.carouselVertical) {
                 w = self.$('thumbnails-list').width();
+                // If the gallery has been hidden our width is 0 which causes
+                // the thumbnails not to display.  In this case, use the
+                // parrent's width so we get a the actual width
+                if (w == 0) {
+                    w = self.$('thumbnails-list').parent().width();
+                }
             }
 
             height_offset = 0;
